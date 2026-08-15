@@ -99,7 +99,7 @@
   opacity: 1;
 }
 
-/* ===== 右侧便笺贴导航 ===== */
+/* ===== 左侧便笺贴导航 ===== */
 
 .sticky-note {
   position: relative;
@@ -129,18 +129,18 @@
 }
 
 .sticky-note:hover {
-  transform: rotate(var(--note-rot, 0deg)) translateX(-8px) scale(1.04);
+  transform: rotate(var(--note-rot, 0deg)) translateX(8px) scale(1.04);
   box-shadow: 3px 4px 9px rgba(50, 35, 10, 0.32);
   z-index: 1;
 }
 
 .sticky-note-active {
-  transform: rotate(0deg) translateX(-10px) scale(1.06);
+  transform: rotate(0deg) translateX(10px) scale(1.06);
   font-weight: 700;
   box-shadow: 3px 5px 10px rgba(50, 35, 10, 0.38);
   z-index: 2;
 }
 
 .sticky-note-active:hover {
-  transform: rotate(0deg) translateX(-10px) scale(1.06);
+  transform: rotate(0deg) translateX(10px) scale(1.06);
 }

@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "build:pages": "vite build --base=/marker-inventory-cn/",
+    "build:pages": "vite build --base=/marker-inventory/",
     "dev": "vite",
-    "postinstall": "node scripts/patch-react-pageflip-enhanced.cjs"
+    "postinstall": "node scripts/patch-react-pageflip-enhanced.cjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
@@ -24,12 +26,16 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "4.1.12",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@vitejs/plugin-react": "4.7.0",
+    "jsdom": "^29.1.1",
     "openskills": "^1.5.0",
     "tailwindcss": "4.1.12",
     "typescript": "5.7.2",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "vitest": "^4.1.10"
   }
 }

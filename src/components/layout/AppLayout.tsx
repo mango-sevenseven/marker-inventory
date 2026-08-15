@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from "react";
 import { Outlet, useLocation } from "react-router";
-import { AddMarkerModal } from "@/components/features/AddMarkerModal";
+import { ItemDialogHost } from "@/features/personal/ItemDialogHost";
 import { Book } from "@/components/Book/Book";
 import { BookFlipBook } from "@/components/Book/BookFlipBook";
 import { BookRouterSync, isExactBookRoute } from "@/components/Book/BookRouterSync";
@@ -42,15 +42,15 @@ export function AppLayout() {
     <Book pageCount={BOOK_PAGE_COUNT}>
       <div className="book-desk flex h-screen flex-col overflow-hidden font-sketch text-foreground">
         <Header />
-        <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 p-4 pr-1">
+        <div className="flex min-h-0 flex-1 flex-row-reverse">
+          <div className="flex min-w-0 flex-1 p-4 pl-1">
             <div className="book-cover flex min-w-0 flex-1">
               <MainContent />
             </div>
           </div>
           <StickyNotes />
         </div>
-        <AddMarkerModal />
+        <ItemDialogHost />
       </div>
     </Book>
   );

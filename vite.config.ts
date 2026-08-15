@@ -3,7 +3,9 @@ import path from "path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 
-/** GitHub Pages 项目站：https://<user>.github.io/marker-inventory-cn/ */
+/// <reference types="vitest/config" />
+
+/** GitHub Pages 项目站：https://<user>.github.io/marker-inventory/ */
 const base = process.env.VITE_BASE_PATH ?? "/";
 
 export default defineConfig({
@@ -15,4 +17,8 @@ export default defineConfig({
     },
   },
   assetsInclude: ["**/*.svg", "**/*.csv"],
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+  },
 });

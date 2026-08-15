@@ -20,7 +20,7 @@
 
 ## 在线演示
 
-GitHub Pages：**https://tuohai-li.github.io/marker-inventory-cn/**
+GitHub Pages：**https://mango-sevenseven.github.io/marker-inventory/**
 
 （推送 `main` 分支后由 GitHub Actions 自动部署，首次约需 1–2 分钟。）
 

@@ -11,7 +11,7 @@ function patchFile(relativePath, patches) {
   for (const { marker, search, replace } of patches) {
     if (next.includes(marker)) continue;
     if (!search.test(next)) {
-      throw new Error(`Patch target not found in ${relativePath}`);
+      throw new Error(`Patch target not found in ${relativePath}: ${marker}`);
     }
     next = next.replace(search, replace);
   }
@@ -69,6 +69,14 @@ const uiCornerHelperPatch = {
     "    isPointOnConfiguredCorners(pos) {\n        const flipController = this.app.getFlipController();\n        return !flipController || flipController.isPointOnCorners(pos);\n    }\n    checkTarget(targer) {",
 };
 
+const interactiveTargetPatch = {
+  marker: "const interactiveSelector = 'a, button, input, select, textarea, label, [contenteditable=\"true\"], [role=\"button\"], [role=\"tab\"], [role=\"combobox\"]';",
+  search:
+    /        if \(\['a', 'button'\]\.includes\(targer\.tagName\.toLowerCase\(\)\)\) \{\r?\n            return false;\r?\n        \}/,
+  replace:
+    "        const interactiveSelector = 'a, button, input, select, textarea, label, [contenteditable=\"true\"], [role=\"button\"], [role=\"tab\"], [role=\"combobox\"]';\n        if (typeof targer.closest === 'function' && targer.closest(interactiveSelector)) {\n            return false;\n        }",
+};
+
 const touchStartCornerGatePatch = {
   marker: "if (this.app.getSettings().disableFlipByClick && !this.isPointOnConfiguredCorners(pos))\n                        return;",
   search:
@@ -113,10 +121,10 @@ const flipSettingTypePatch = {
 const runtimePatches = [
   settingsDefaultPatch,
   cornerDistancePatch,
-  cornerOnlyUserTouchPatch,
   resetFoldOnUserTouchPatch,
   cornerOnlyFoldPatch,
   uiCornerHelperPatch,
+  interactiveTargetPatch,
   touchStartCornerGatePatch,
   touchMoveSwipeCornerGatePatch,
   touchEndSwipeCornerGatePatch,
