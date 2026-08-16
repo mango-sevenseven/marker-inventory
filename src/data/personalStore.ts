@@ -39,7 +39,7 @@ function load(storage?: Storage): PersonalStoreSnapshot {
     return {
       ...fallback,
       ...parsed,
-      items: parsed.items.map((item) => ({ ...item, dailyUse: item.dailyUse ?? "", customValues: item.customValues ?? {} })),
+      items: parsed.items.map((item) => ({ ...item, imageUrl: item.imageUrl ?? "", dailyUse: item.dailyUse ?? "", customValues: item.customValues ?? {} })),
       categories: parsed.categories.map((category) => ({ ...category, attributes: category.attributes ?? [] })),
       baseAttributes,
       dailyUsageRecords: Array.isArray(parsed.dailyUsageRecords)
@@ -136,6 +136,13 @@ export function createPersonalStore(storage?: Storage) {
     recordItemUse(id: string) {
       const now = new Date().toISOString();
       updateItems(snapshot.items.map((entry) => entry.id === id ? { ...entry, useCount: entry.useCount + 1, updatedAt: now } : entry));
+    },
+    adjustItemUseCounts(deltas: Record<string, number>) {
+      const now = new Date().toISOString();
+      updateItems(snapshot.items.map((entry) => {
+        const delta = deltas[entry.id] ?? 0;
+        return delta === 0 ? entry : { ...entry, useCount: Math.max(0, entry.useCount + delta), updatedAt: now };
+      }));
     },
     setDailyUsage(date: string, itemIds: string[]) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("日期格式不正确");

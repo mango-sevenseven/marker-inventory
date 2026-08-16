@@ -33,6 +33,17 @@ const draft: Item = {
 };
 
 describe("personal inventory store", () => {
+  it("can adjust several item usage counts without going below zero", () => {
+    const store = createPersonalStore(new MemoryStorage());
+    const [first, second] = store.getSnapshot().items;
+    store.updateItem(first.id, { useCount: 2 });
+
+    store.adjustItemUseCounts({ [first.id]: -1, [second.id]: 2 });
+
+    expect(store.getSnapshot().items.find((item) => item.id === first.id)?.useCount).toBe(1);
+    expect(store.getSnapshot().items.find((item) => item.id === second.id)?.useCount).toBe(2);
+  });
+
   it("loads seed items only when personal storage is absent", () => {
     const storage = new MemoryStorage();
     const first = createPersonalStore(storage);

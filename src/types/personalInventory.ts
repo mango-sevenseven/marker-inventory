@@ -14,6 +14,7 @@ export interface Item {
   dailyUse: string;
   useCount: number;
   notes: string;
+  imageUrl?: string;
   createdAt: string;
   updatedAt: string;
   customValues?: Record<string, string>;

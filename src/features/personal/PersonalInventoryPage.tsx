@@ -37,8 +37,9 @@ function attributeDisplayValue(item: Item, attribute: AttributeDefinition) {
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
 
-function PageTitle({ view }: { view: PersonalView }) {
-  return <div className="mb-5"><h1 className="text-[26px] font-bold">{titles[view][0]}</h1><p className="mt-1 text-sm text-muted">{titles[view][1]}</p></div>;
+function PageTitle({ view, embedded = false }: { view: PersonalView; embedded?: boolean }) {
+  const Heading = embedded ? "h2" : "h1";
+  return <div className="mb-5"><Heading className="text-[26px] font-bold">{titles[view][0]}</Heading><p className="mt-1 text-sm text-muted">{titles[view][1]}</p></div>;
 }
 
 function InsightCard({ title, item, primary, secondary, empty }: { title: string; item: Item | null; primary?: string; secondary?: string; empty: string }) {
@@ -56,10 +57,10 @@ function InsightCard({ title, item, primary, secondary, empty }: { title: string
   );
 }
 
-function ExpiringItemsCard({ items }: { items: ExpiringItemInsight[] }) {
+export function InventoryExpiryCard({ items, title = "即将过期" }: { items: ExpiringItemInsight[]; title?: string }) {
   return (
     <Card className="p-4">
-      <h2 className="mb-3 text-lg font-bold">即将过期</h2>
+      <h2 className="mb-3 text-lg font-bold">{title}</h2>
       {items.length > 0 ? (
         <div>
           {items.map(({ item, daysRemaining }) => (
@@ -76,15 +77,6 @@ function ExpiringItemsCard({ items }: { items: ExpiringItemInsight[] }) {
       ) : (
         <p className="px-2 text-sm text-muted">未来 15 天内暂无即将过期的物品。</p>
       )}
-    </Card>
-  );
-}
-
-function RecentPurchasesCard({ items }: { items: Item[] }) {
-  return (
-    <Card className="p-4">
-      <h2 className="mb-3 text-lg font-bold">近期新增</h2>
-      {items.length > 0 ? <div>{items.map((item) => <button key={item.id} className="sketch-row grid w-full grid-cols-[minmax(0,1fr)_112px] gap-3 px-2 py-2 text-left" onClick={() => openItemDialog(item.id)}><b className="truncate text-base">{item.name}</b><span className="text-right text-sm">{item.startedAt}</span></button>)}</div> : <p className="px-2 text-sm text-muted">暂无填写购入日期的物品。</p>}
     </Card>
   );
 }
@@ -286,7 +278,7 @@ function Library({ store }: { store: PersonalStore }) {
   );
 }
 
-export function PersonalInventoryPage({ view, store = personalStore }: { view: PersonalView; store?: PersonalStore }) {
+export function PersonalInventoryPage({ view, store = personalStore, embedded = false, onViewChange, onOpenSettings }: { view: PersonalView; store?: PersonalStore; embedded?: boolean; onViewChange?: (view: PersonalView) => void; onOpenSettings?: () => void }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const insights = useMemo(
     () => calculateDashboardInsights(
@@ -313,6 +305,14 @@ export function PersonalInventoryPage({ view, store = personalStore }: { view: P
     const byCategory = snapshot.categories.map((category) => ({ ...category, items: snapshot.items.filter((item) => item.category === category.name) }));
     return { ...valueStats, incomplete, byCategory };
   }, [snapshot]);
+  const openView = (nextView: "library" | "stats" | "settings") => {
+    if (onViewChange) {
+      onViewChange(nextView);
+      return;
+    }
+    const suffix = nextView === "library" ? "library" : nextView;
+    window.location.assign(`${import.meta.env.BASE_URL}life/items/${suffix}`);
+  };
 
   const content = (() => {
     if (view === "library") return <Library store={store} />;
@@ -324,8 +324,6 @@ export function PersonalInventoryPage({ view, store = personalStore }: { view: P
         { label: "消耗价值", value: money(stats.consumedValue), sub: "已消耗物品价格合计", accentColor: "#c87050", icon: <AlertCircle /> },
       ]} />
       <div className="grid gap-4 md:grid-cols-2">
-        <ExpiringItemsCard items={insights.expiringSoon} />
-        <RecentPurchasesCard items={insights.recentPurchases.map(({ item }) => item)} />
         <InsightCard title="性价比最高" item={insights.bestValue?.item ?? null} primary={insights.bestValue?.metrics.costPerUse !== null && insights.bestValue ? `单次成本 ${money(insights.bestValue.metrics.costPerUse)}` : undefined} secondary="单次使用成本最低" empty="填写价格并记录使用后，即可计算性价比。" />
         <InsightCard title="性价比最低" item={insights.worstValue?.item ?? null} primary={insights.worstValue?.metrics.costPerUse !== null && insights.worstValue ? `单次成本 ${money(insights.worstValue.metrics.costPerUse)}` : undefined} secondary="单次使用成本最高" empty="填写价格并记录使用后，即可计算性价比。" />
         <LongestOwnedCard items={insights.longestOwned} />
@@ -335,9 +333,9 @@ export function PersonalInventoryPage({ view, store = personalStore }: { view: P
           <h2 className="mb-3 text-lg font-bold">快捷操作</h2>
           <div className="grid grid-cols-2 gap-2">
             <Button onClick={() => openItemDialog()}><Plus size={15} /> 添加物品</Button>
-            <Button onClick={() => window.dispatchEvent(new CustomEvent("book:navigate", { detail: { path: "/export" } }))}>导入 CSV</Button>
-            <Button onClick={() => window.dispatchEvent(new CustomEvent("book:navigate", { detail: { path: "/stats" } }))}>查看统计</Button>
-            <Button onClick={() => window.dispatchEvent(new CustomEvent("book:navigate", { detail: { path: "/settings" } }))}>设置</Button>
+            <Button onClick={() => openView("library")}>物品库</Button>
+            <Button onClick={() => openView("stats")}><BarChart3 size={15} /> 统计分析</Button>
+            <Button onClick={() => onOpenSettings ? onOpenSettings() : openView("settings")}>设置</Button>
           </div>
         </Card>
       </div>
@@ -365,5 +363,5 @@ export function PersonalInventoryPage({ view, store = personalStore }: { view: P
     return <Card className="p-8 text-center"><Heart className="mx-auto mb-3" /><h2 className="text-xl font-bold">心愿清单准备好了</h2><p className="mt-2 text-sm text-muted">第一阶段先把已有物品整理清楚，心愿记录将在下一阶段扩展。</p></Card>;
   })();
 
-  return <div><PageTitle view={view} />{content}</div>;
+  return <div><PageTitle view={view} embedded={embedded} />{content}</div>;
 }
