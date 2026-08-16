@@ -248,6 +248,11 @@ function Library({ store }: { store: PersonalStore }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [filter, setFilter] = useState<ItemFilter>({ name: "", category: "" });
   const items = useMemo(() => filterItems(snapshot.items, filter), [snapshot.items, filter]);
+  const columns = useMemo(() => {
+    const base = snapshot.baseAttributes.map((attribute) => ({ attribute, categoryName: "" }));
+    const categories = filter.category ? snapshot.categories.filter((category) => category.name === filter.category) : snapshot.categories;
+    return [...base, ...categories.flatMap((category) => category.attributes.map((attribute) => ({ attribute, categoryName: category.name })))];
+  }, [filter.category, snapshot.baseAttributes, snapshot.categories]);
   return (
     <>
       <div className="mb-4 grid gap-2 md:grid-cols-[1fr_180px_auto]">
@@ -257,13 +262,13 @@ function Library({ store }: { store: PersonalStore }) {
       </div>
       <p className="mb-2 text-xs text-muted">找到 {items.length} 件物品</p>
       <div className="overflow-x-auto pb-2">
-        <Table style={{ minWidth: Math.max(720, snapshot.baseAttributes.length * 140 + 180) }}>
+        <Table style={{ minWidth: Math.max(720, columns.length * 140 + 180) }}>
           <TableHead><tr>
-            {snapshot.baseAttributes.map((attribute) => <TableHeaderCell key={attribute.id} className="whitespace-nowrap">{attribute.name}</TableHeaderCell>)}
+            {columns.map(({ attribute, categoryName }) => <TableHeaderCell key={`${categoryName}-${attribute.id}`} className="whitespace-nowrap">{categoryName && !filter.category ? `${categoryName} · ${attribute.name}` : attribute.name}</TableHeaderCell>)}
             <TableHeaderCell className="whitespace-nowrap">操作</TableHeaderCell>
           </tr></TableHead>
           <TableBody>{items.map((item) => <TableRow key={item.id}>
-            {snapshot.baseAttributes.map((attribute) => <TableCell key={attribute.id} className="max-w-[220px] whitespace-nowrap"><div className="truncate" title={attributeDisplayValue(item, attribute)}>{attribute.itemKey === "name" ? <button className="text-left font-bold hover:underline" onClick={() => openItemDialog(item.id)}>{attributeDisplayValue(item, attribute)}</button> : attributeDisplayValue(item, attribute)}</div></TableCell>)}
+            {columns.map(({ attribute, categoryName }) => { const displayValue = categoryName && categoryName !== item.category ? "—" : attributeDisplayValue(item, attribute); return <TableCell key={`${categoryName}-${attribute.id}`} className="max-w-[220px] whitespace-nowrap"><div className="truncate" title={displayValue}>{attribute.itemKey === "name" ? <button className="text-left font-bold hover:underline" onClick={() => openItemDialog(item.id)}>{displayValue}</button> : displayValue}</div></TableCell>; })}
             <TableCell>
               <div className="flex gap-2">
                 <Button size="sm" className="!w-auto" aria-label={`编辑${item.name}`} onClick={() => openItemDialog(item.id)}><Pencil size={13} /> 编辑</Button>

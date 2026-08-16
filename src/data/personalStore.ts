@@ -23,6 +23,46 @@ const initialSnapshot = (): PersonalStoreSnapshot => ({
   wishlist: [],
 });
 
+const configurableItemKeys = ["name", "brand", "model", "color", "material", "composition", "season", "price", "startedAt", "endedAt", "dailyUse", "notes"] as const;
+
+function clearAttributeValue(item: Item, attribute: AttributeDefinition): Item {
+  if (!attribute.itemKey) {
+    if (!Object.prototype.hasOwnProperty.call(item.customValues ?? {}, attribute.id)) return item;
+    const customValues = { ...(item.customValues ?? {}) };
+    delete customValues[attribute.id];
+    return { ...item, customValues, updatedAt: new Date().toISOString() };
+  }
+  if (attribute.itemKey === "price") return item.price === null ? item : { ...item, price: null, updatedAt: new Date().toISOString() };
+  if (attribute.itemKey === "name") return item.name === "未命名物品" ? item : { ...item, name: "未命名物品", updatedAt: new Date().toISOString() };
+  return item[attribute.itemKey] === "" ? item : { ...item, [attribute.itemKey]: "", updatedAt: new Date().toISOString() };
+}
+
+function attributeValue(item: Item, attribute: AttributeDefinition) {
+  if (!attribute.itemKey) return item.customValues?.[attribute.id] ?? "";
+  const value = item[attribute.itemKey];
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function normalizeItemToSettings(item: Item, baseAttributes: AttributeDefinition[], categories: Category[]): Item {
+  const categoryAttributes = categories.find((category) => category.name === item.category)?.attributes ?? [];
+  const attributes = [...baseAttributes, ...categoryAttributes];
+  const allowedItemKeys = new Set(attributes.flatMap((attribute) => attribute.itemKey ? [attribute.itemKey] : []));
+  const allowedCustomIds = new Set(attributes.filter((attribute) => !attribute.itemKey).map((attribute) => attribute.id));
+  let normalized = { ...item, imageUrl: item.imageUrl ?? "", dailyUse: item.dailyUse ?? "", customValues: Object.fromEntries(Object.entries(item.customValues ?? {}).filter(([id]) => allowedCustomIds.has(id))) };
+  configurableItemKeys.forEach((key) => {
+    if (!allowedItemKeys.has(key)) normalized = clearAttributeValue(normalized, { id: `removed-${key}`, name: key, type: key === "price" ? "number" : "text", itemKey: key });
+  });
+  attributes.forEach((attribute) => {
+    if (attribute.type === "select") normalized = clearInvalidSelectValue(normalized, attribute);
+  });
+  return normalized;
+}
+
+function clearInvalidSelectValue(item: Item, attribute: AttributeDefinition) {
+  const value = attributeValue(item, attribute);
+  return value === "" || (attribute.options ?? []).includes(value) ? item : clearAttributeValue(item, attribute);
+}
+
 function load(storage?: Storage): PersonalStoreSnapshot {
   if (!storage) return initialSnapshot();
   try {
@@ -31,16 +71,13 @@ function load(storage?: Storage): PersonalStoreSnapshot {
     const parsed = JSON.parse(raw) as PersonalStoreSnapshot;
     if (parsed.version !== 1 || !Array.isArray(parsed.items) || !Array.isArray(parsed.categories)) return initialSnapshot();
     const fallback = initialSnapshot();
-    const loadedBaseAttributes = Array.isArray(parsed.baseAttributes) ? parsed.baseAttributes : fallback.baseAttributes;
-    const dailyUseAttribute = fallback.baseAttributes.find((attribute) => attribute.itemKey === "dailyUse")!;
-    const baseAttributes = loadedBaseAttributes.some((attribute) => attribute.itemKey === "dailyUse" || attribute.name.trim() === "是否每天使用")
-      ? loadedBaseAttributes
-      : [...loadedBaseAttributes, dailyUseAttribute];
+    const baseAttributes = Array.isArray(parsed.baseAttributes) ? parsed.baseAttributes : fallback.baseAttributes;
+    const categories = parsed.categories.map((category) => ({ ...category, attributes: category.attributes ?? [] }));
     return {
       ...fallback,
       ...parsed,
-      items: parsed.items.map((item) => ({ ...item, imageUrl: item.imageUrl ?? "", dailyUse: item.dailyUse ?? "", customValues: item.customValues ?? {} })),
-      categories: parsed.categories.map((category) => ({ ...category, attributes: category.attributes ?? [] })),
+      items: parsed.items.map((item) => normalizeItemToSettings(item, baseAttributes, categories)),
+      categories,
       baseAttributes,
       dailyUsageRecords: Array.isArray(parsed.dailyUsageRecords)
         ? parsed.dailyUsageRecords.map((record) => ({ date: record.date, itemIds: Array.isArray(record.itemIds) ? record.itemIds : [] }))
@@ -53,6 +90,7 @@ function load(storage?: Storage): PersonalStoreSnapshot {
 
 export function createPersonalStore(storage?: Storage) {
   let snapshot = load(storage);
+  storage?.setItem(PERSONAL_STORAGE_KEY, JSON.stringify(snapshot));
   const listeners = new Set<() => void>();
   const publish = (next: PersonalStoreSnapshot) => {
     snapshot = next;
@@ -92,10 +130,15 @@ export function createPersonalStore(storage?: Storage) {
     },
     updateBaseAttribute(id: string, patch: Pick<AttributeDefinition, "name" | "type" | "options">) {
       ensureUniqueName(patch.name, snapshot.baseAttributes.filter((entry) => entry.id !== id).map((entry) => entry.name), "基础属性名称已存在");
-      publish({ ...snapshot, baseAttributes: snapshot.baseAttributes.map((entry) => entry.id === id ? { ...entry, ...patch, name: patch.name.trim() } : entry) });
+      const current = snapshot.baseAttributes.find((entry) => entry.id === id);
+      if (!current) return;
+      const nextAttribute = { ...current, ...patch, name: patch.name.trim() };
+      publish({ ...snapshot, baseAttributes: snapshot.baseAttributes.map((entry) => entry.id === id ? nextAttribute : entry), items: nextAttribute.type === "select" ? snapshot.items.map((item) => clearInvalidSelectValue(item, nextAttribute)) : snapshot.items });
     },
     removeBaseAttribute(id: string) {
-      publish({ ...snapshot, baseAttributes: snapshot.baseAttributes.filter((entry) => entry.id !== id) });
+      const attribute = snapshot.baseAttributes.find((entry) => entry.id === id);
+      if (!attribute) return;
+      publish({ ...snapshot, baseAttributes: snapshot.baseAttributes.filter((entry) => entry.id !== id), items: snapshot.items.map((item) => clearAttributeValue(item, attribute)) });
     },
     addCategory(category: Category) {
       ensureUniqueName(category.name, snapshot.categories.map((entry) => entry.name), "类别名称已存在");
@@ -128,10 +171,16 @@ export function createPersonalStore(storage?: Storage) {
       const category = snapshot.categories.find((entry) => entry.id === categoryId);
       if (!category) return;
       ensureUniqueName(patch.name, category.attributes.filter((entry) => entry.id !== attributeId).map((entry) => entry.name), "该类别下的属性名称已存在");
-      publish({ ...snapshot, categories: snapshot.categories.map((entry) => entry.id === categoryId ? { ...entry, attributes: entry.attributes.map((attribute) => attribute.id === attributeId ? { ...attribute, ...patch, name: patch.name.trim() } : attribute) } : entry) });
+      const current = category.attributes.find((attribute) => attribute.id === attributeId);
+      if (!current) return;
+      const nextAttribute = { ...current, ...patch, name: patch.name.trim() };
+      publish({ ...snapshot, categories: snapshot.categories.map((entry) => entry.id === categoryId ? { ...entry, attributes: entry.attributes.map((attribute) => attribute.id === attributeId ? nextAttribute : attribute) } : entry), items: nextAttribute.type === "select" ? snapshot.items.map((item) => item.category === category.name ? clearInvalidSelectValue(item, nextAttribute) : item) : snapshot.items });
     },
     removeCategoryAttribute(categoryId: string, attributeId: string) {
-      publish({ ...snapshot, categories: snapshot.categories.map((entry) => entry.id === categoryId ? { ...entry, attributes: entry.attributes.filter((attribute) => attribute.id !== attributeId) } : entry) });
+      const category = snapshot.categories.find((entry) => entry.id === categoryId);
+      const attribute = category?.attributes.find((entry) => entry.id === attributeId);
+      if (!category || !attribute) return;
+      publish({ ...snapshot, categories: snapshot.categories.map((entry) => entry.id === categoryId ? { ...entry, attributes: entry.attributes.filter((entryAttribute) => entryAttribute.id !== attributeId) } : entry), items: snapshot.items.map((item) => item.category === category.name ? clearAttributeValue(item, attribute) : item) });
     },
     recordItemUse(id: string) {
       const now = new Date().toISOString();

@@ -117,7 +117,7 @@ export function InventorySettingsPanel({ snapshot, store }: { snapshot: Personal
   const [message, setMessage] = useState("");
 
   const removeBaseAttribute = (attribute: AttributeDefinition) => {
-    if (window.confirm(`确定删除基础属性“${attribute.name}”吗？历史物品值将保留。`)) store.removeBaseAttribute(attribute.id);
+    if (window.confirm(`确定删除基础属性“${attribute.name}”吗？所有物品中的对应值也会删除。`)) store.removeBaseAttribute(attribute.id);
   };
   const removeCategory = (category: Category) => {
     if (!window.confirm(`确定删除类别“${category.name}”吗？`)) return;
@@ -129,7 +129,7 @@ export function InventorySettingsPanel({ snapshot, store }: { snapshot: Personal
     }
   };
   const removeCategoryAttribute = (categoryId: string, attribute: AttributeDefinition) => {
-    if (window.confirm(`确定删除专有属性“${attribute.name}”吗？历史物品值将保留。`)) store.removeCategoryAttribute(categoryId, attribute.id);
+    if (window.confirm(`确定删除专有属性“${attribute.name}”吗？该类别物品中的对应值也会删除。`)) store.removeCategoryAttribute(categoryId, attribute.id);
   };
 
   return (

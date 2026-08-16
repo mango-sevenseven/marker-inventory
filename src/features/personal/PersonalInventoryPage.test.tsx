@@ -45,9 +45,12 @@ describe("personal item library", () => {
     expect(screen.getByRole("heading", { name: "每日使用" })).toBeInTheDocument();
   });
 
-  it("filters seeded items and displays only configurable base attributes", () => {
+  it("filters seeded items and displays every attribute configured in settings", () => {
     const store = createPersonalStore(new MemoryStorage());
     store.addCategory({ id: "books", name: "图书", attributes: [] });
+    store.addCategoryAttribute("clothes", { id: "clothing-size", name: "尺码", type: "text" });
+    const clothing = store.getSnapshot().items.find((item) => item.id === "clothes01")!;
+    store.updateItem(clothing.id, { customValues: { "clothing-size": "M" } });
     render(<PersonalInventoryPage view="library" store={store} />);
 
     const categorySelect = screen.getByRole("combobox", { name: "类别" });
@@ -59,9 +62,15 @@ describe("personal item library", () => {
       "物品名称", "品牌", "型号", "颜色", "材质", "成分", "季节",
       "价格", "开始时间", "截止时间", "备注", "操作",
     ].forEach((name) => expect(screen.getByRole("columnheader", { name })).toBeInTheDocument());
+    expect(screen.getByRole("columnheader", { name: "衣服 · 尺码" })).toBeInTheDocument();
     ["图片", "类别", "使用频率（天/次）", "单次使用成本", "使用时间(天)"].forEach((name) => {
       expect(screen.queryByRole("columnheader", { name })).not.toBeInTheDocument();
     });
+
+    fireEvent.change(categorySelect, { target: { value: "衣服" } });
+    expect(screen.getByRole("columnheader", { name: "尺码" })).toBeInTheDocument();
+    expect(screen.getByText("M")).toBeInTheDocument();
+    fireEvent.change(categorySelect, { target: { value: "" } });
 
     fireEvent.change(screen.getByRole("textbox", { name: "名称" }), {
       target: { value: "键盘" },
