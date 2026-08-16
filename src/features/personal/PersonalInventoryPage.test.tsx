@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPersonalStore } from "@/data/personalStore";
 import { ItemDialogHost, openItemDialog } from "./ItemDialogHost";
@@ -17,6 +17,34 @@ class MemoryStorage implements Storage {
 afterEach(cleanup);
 
 describe("personal item library", () => {
+  it("keeps the dashboard focused and opens its reusable item views", () => {
+    const store = createPersonalStore(new MemoryStorage());
+    const onViewChange = vi.fn();
+    const onOpenSettings = vi.fn();
+    render(<PersonalInventoryPage view="dashboard" store={store} embedded onViewChange={onViewChange} onOpenSettings={onOpenSettings} />);
+
+    expect(screen.queryByRole("heading", { name: "即将过期" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "近期新增" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "导入 CSV" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "物品库" }));
+    expect(onViewChange).toHaveBeenCalledWith("library");
+    fireEvent.click(screen.getByRole("button", { name: "统计分析" }));
+    expect(onViewChange).toHaveBeenCalledWith("stats");
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    expect(onViewChange).not.toHaveBeenCalledWith("settings");
+  });
+
+  it("uses a second-level title when embedded in the life page", () => {
+    const store = createPersonalStore(new MemoryStorage());
+    render(<PersonalInventoryPage view="dashboard" store={store} embedded />);
+
+    expect(screen.getByRole("heading", { name: "我的物品手账", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "我的物品手账", level: 1 })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "每日使用" })).toBeInTheDocument();
+  });
+
   it("filters seeded items and displays only configurable base attributes", () => {
     const store = createPersonalStore(new MemoryStorage());
     store.addCategory({ id: "books", name: "图书", attributes: [] });
@@ -85,6 +113,34 @@ describe("personal item library", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存物品" }));
 
     expect(store.getSnapshot().items.at(-1)?.customValues?.[attribute.id]).toBe("通过");
+  });
+
+  it("adds clothing through the shared item dialog with a locked category", () => {
+    const store = createPersonalStore(new MemoryStorage());
+    render(<ItemDialogHost store={store} />);
+
+    act(() => openItemDialog(undefined, { category: "衣服", lockCategory: true, title: "添加衣服" }));
+    expect(screen.getByRole("heading", { name: "添加衣服" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "分类" })).toHaveValue("衣服");
+    expect(screen.getByRole("combobox", { name: "分类" })).toBeDisabled();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "物品名称" }), { target: { value: "米色风衣" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存物品" }));
+    expect(store.getSnapshot().items.at(-1)).toMatchObject({ name: "米色风衣", category: "衣服" });
+  });
+
+  it("uploads and saves a clothing photo in the shared item dialog", async () => {
+    const store = createPersonalStore(new MemoryStorage());
+    render(<ItemDialogHost store={store} />);
+    act(() => openItemDialog(undefined, { category: "衣服", lockCategory: true, title: "添加衣服" }));
+
+    const file = new File(["image"], "coat.png", { type: "image/png" });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByRole("img", { name: "物品预览" })).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("textbox", { name: "物品名称" }), { target: { value: "有照片的风衣" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存物品" }));
+
+    expect(store.getSnapshot().items.at(-1)).toMatchObject({ name: "有照片的风衣", imageUrl: expect.stringContaining("data:image/png;base64") });
   });
 
   it("switches between settings tabs and omits local data controls", () => {
