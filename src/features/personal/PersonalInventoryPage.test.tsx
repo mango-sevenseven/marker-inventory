@@ -88,6 +88,31 @@ describe("personal item library", () => {
     confirm.mockRestore();
   });
 
+  it("sizes table columns from their content and switches to two-column image tiles", () => {
+    const store = createPersonalStore(new MemoryStorage());
+    const clothing = store.getSnapshot().items.find((item) => item.id === "clothes01")!;
+    store.updateItem(clothing.id, { imageUrl: "/media/clothing.jpg" });
+    const { container } = render(<PersonalInventoryPage view="library" store={store} />);
+
+    expect(screen.getByRole("button", { name: "表格" })).toHaveAttribute("aria-pressed", "true");
+    const libraryTable = screen.getByRole("table").closest(".personal-library-table") as HTMLElement;
+    expect(libraryTable.style.width).toMatch(/px$/);
+    expect(libraryTable.style.minWidth).toBe("100%");
+    const columnWidths = [...container.querySelectorAll<HTMLTableColElement>(".personal-library-table col")].map((column) => column.style.width);
+    expect(new Set(columnWidths).size).toBeGreaterThan(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "大图磁贴" }));
+    expect(screen.getByRole("button", { name: "大图磁贴" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const tileList = screen.getByRole("list", { name: "物品大图磁贴" });
+    expect(within(tileList).getAllByRole("listitem")).toHaveLength(store.getSnapshot().items.length);
+    expect(within(tileList).getByRole("img", { name: clothing.name })).toHaveAttribute("src", "/media/clothing.jpg");
+    expect(within(tileList).getByRole("button", { name: `编辑${clothing.name}` })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "表格" }));
+    expect(screen.getByRole("table")).toBeInTheDocument();
+  });
+
   it("adds a configurable base attribute from settings", () => {
     const store = createPersonalStore(new MemoryStorage());
     render(<PersonalInventoryPage view="settings" store={store} />);

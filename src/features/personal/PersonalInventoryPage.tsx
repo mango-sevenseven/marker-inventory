@@ -1,5 +1,5 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { AlertCircle, ArrowDown, ArrowUp, BarChart3, Box, CalendarDays, Heart, PackageOpen, Pencil, Plus, ShoppingBag, Sparkles, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, BarChart3, Box, CalendarDays, Heart, LayoutGrid, List, PackageOpen, Pencil, Plus, ShoppingBag, Sparkles, Trash2 } from "lucide-react";
 import { personalStore, type PersonalStore, type PersonalStoreSnapshot } from "@/data/personalStore";
 import { filterItems, isItemIncomplete } from "@/lib/itemFilters";
 import { calculateDashboardInsights, type ExpiringItemInsight, type ItemInsight } from "@/lib/dashboardInsights";
@@ -35,6 +35,33 @@ function attributeDisplayValue(item: Item, attribute: AttributeDefinition) {
   if (attribute.itemKey === "price") return item.price === null ? "—" : money(item.price);
   const value = attribute.itemKey ? item[attribute.itemKey] : item.customValues?.[attribute.id];
   return value === null || value === undefined || value === "" ? "—" : String(value);
+}
+
+interface LibraryColumn {
+  attribute: AttributeDefinition;
+  categoryName: string;
+}
+
+function libraryColumnLabel(column: LibraryColumn, selectedCategory: string) {
+  return column.categoryName && !selectedCategory
+    ? `${column.categoryName} · ${column.attribute.name}`
+    : column.attribute.name;
+}
+
+function visualTextUnits(value: string) {
+  return Array.from(value).reduce((total, character) => total + ((character.codePointAt(0) ?? 0) > 0xff ? 2 : 1), 0);
+}
+
+function libraryColumnWidth(column: LibraryColumn, items: Item[], selectedCategory: string) {
+  let longest = visualTextUnits(libraryColumnLabel(column, selectedCategory));
+  for (const item of items) {
+    const displayValue = column.categoryName && column.categoryName !== item.category
+      ? "—"
+      : attributeDisplayValue(item, column.attribute);
+    longest = Math.max(longest, visualTextUnits(displayValue));
+  }
+  const minimum = column.attribute.itemKey === "name" ? 78 : 48;
+  return Math.round(Math.min(188, Math.max(minimum, longest * 6.5 + 16)));
 }
 
 function PageTitle({ view, embedded = false }: { view: PersonalView; embedded?: boolean }) {
@@ -244,15 +271,54 @@ function ValueForMoneyTable({ snapshot }: { snapshot: PersonalStoreSnapshot }) {
   );
 }
 
+function ItemTile({ item, store }: { item: Item; store: PersonalStore }) {
+  const [failedImageUrl, setFailedImageUrl] = useState("");
+  const imageUrl = item.imageUrl?.trim() ?? "";
+  const showImage = imageUrl !== "" && failedImageUrl !== imageUrl;
+  const description = [item.brand, item.model].filter(Boolean).join(" · ") || "暂无品牌或型号";
+
+  return (
+    <Card className="personal-item-tile" role="listitem" hoverLift={false}>
+      <button type="button" className="personal-item-tile-photo" aria-label={`查看${item.name}详情`} onClick={() => openItemDialog(item.id)}>
+        {showImage ? (
+          <img src={imageUrl} alt={item.name} loading="lazy" decoding="async" onError={() => setFailedImageUrl(imageUrl)} />
+        ) : (
+          <span className="personal-item-tile-placeholder"><PackageOpen aria-hidden="true" /><small>暂无图片</small></span>
+        )}
+      </button>
+      <div className="personal-item-tile-body">
+        <div className="personal-item-tile-title">
+          <button type="button" title={item.name} onClick={() => openItemDialog(item.id)}>{item.name}</button>
+          <span>{item.category}</span>
+        </div>
+        <p title={description}>{description}</p>
+        <div className="personal-item-tile-footer">
+          <b>{item.price === null ? "价格未填写" : money(item.price)}</b>
+          <div className="personal-item-tile-actions">
+            <Button size="sm" className="!w-auto !px-1.5 !py-0.5" aria-label={`编辑${item.name}`} onClick={() => openItemDialog(item.id)}><Pencil size={12} /> 编辑</Button>
+            <Button size="sm" variant="destructive" className="!w-auto !px-1.5 !py-0.5" aria-label={`删除${item.name}`} onClick={() => { if (window.confirm(`确定删除“${item.name}”吗？删除后无法恢复。`)) store.removeItem(item.id); }}><Trash2 size={12} /> 删除</Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function Library({ store }: { store: PersonalStore }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [filter, setFilter] = useState<ItemFilter>({ name: "", category: "" });
+  const [viewMode, setViewMode] = useState<"table" | "tiles">("table");
   const items = useMemo(() => filterItems(snapshot.items, filter), [snapshot.items, filter]);
-  const columns = useMemo(() => {
+  const columns = useMemo<LibraryColumn[]>(() => {
     const base = snapshot.baseAttributes.map((attribute) => ({ attribute, categoryName: "" }));
     const categories = filter.category ? snapshot.categories.filter((category) => category.name === filter.category) : snapshot.categories;
     return [...base, ...categories.flatMap((category) => category.attributes.map((attribute) => ({ attribute, categoryName: category.name })))];
   }, [filter.category, snapshot.baseAttributes, snapshot.categories]);
+  const columnWidths = useMemo(
+    () => columns.map((column) => libraryColumnWidth(column, items, filter.category)),
+    [columns, filter.category, items],
+  );
+  const tableWidth = useMemo(() => columnWidths.reduce((total, width) => total + width, 112), [columnWidths]);
   return (
     <>
       <div className="personal-library-toolbar mb-3 grid gap-1.5 md:grid-cols-[1fr_168px_auto]">
@@ -260,11 +326,21 @@ function Library({ store }: { store: PersonalStore }) {
         <Select aria-label="类别" value={filter.category} onChange={(event) => setFilter({ ...filter, category: event.target.value })}><option value="">全部类别</option>{snapshot.categories.map((category) => <option key={category.id}>{category.name}</option>)}</Select>
         <Button variant="primary" className="!w-auto" onClick={() => openItemDialog()}><Plus size={15} /> 添加物品</Button>
       </div>
-      <p className="mb-1.5 text-xs text-muted">找到 {items.length} 件物品</p>
-      <div className="overflow-x-auto pb-2">
-        <Table className="personal-library-table" style={{ minWidth: Math.max(640, columns.length * 112 + 158) }}>
+      <div className="personal-library-summary">
+        <p className="text-xs text-muted">找到 {items.length} 件物品</p>
+        <div className="personal-library-view-switch" role="group" aria-label="物品显示方式">
+          <button type="button" aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><List size={14} />表格</button>
+          <button type="button" aria-pressed={viewMode === "tiles"} onClick={() => setViewMode("tiles")}><LayoutGrid size={14} />大图磁贴</button>
+        </div>
+      </div>
+      {viewMode === "table" ? <div className="overflow-x-auto pb-2">
+        <Table className="personal-library-table" style={{ width: tableWidth, minWidth: "100%" }}>
+          <colgroup>
+            {columns.map(({ attribute, categoryName }, index) => <col key={`${categoryName}-${attribute.id}`} style={{ width: columnWidths[index] }} />)}
+            <col style={{ width: 112 }} />
+          </colgroup>
           <TableHead><tr>
-            {columns.map(({ attribute, categoryName }) => <TableHeaderCell key={`${categoryName}-${attribute.id}`} className="whitespace-nowrap">{categoryName && !filter.category ? `${categoryName} · ${attribute.name}` : attribute.name}</TableHeaderCell>)}
+            {columns.map((column) => <TableHeaderCell key={`${column.categoryName}-${column.attribute.id}`} className="whitespace-nowrap">{libraryColumnLabel(column, filter.category)}</TableHeaderCell>)}
             <TableHeaderCell className="whitespace-nowrap">操作</TableHeaderCell>
           </tr></TableHead>
           <TableBody>{items.map((item) => <TableRow key={item.id}>
@@ -277,7 +353,9 @@ function Library({ store }: { store: PersonalStore }) {
             </TableCell>
           </TableRow>)}</TableBody>
         </Table>
-      </div>
+      </div> : <div className="personal-library-tile-grid" role="list" aria-label="物品大图磁贴">
+        {items.map((item) => <ItemTile key={item.id} item={item} store={store} />)}
+      </div>}
       {items.length === 0 ? <Card className="p-8 text-center"><PackageOpen className="mx-auto mb-2" /><p className="font-bold">没有符合条件的物品</p><p className="text-sm text-muted">调整搜索或筛选条件。</p></Card> : null}
     </>
   );
