@@ -3,6 +3,7 @@ import {
   createQueuedStateWriter,
   createDirtyStateTracker,
   createRemoteStateClient,
+  dataUrlToBlob,
   migratePersonalItemImages,
   synchronizeStateAdapter,
   type RemoteStateClient,
@@ -192,5 +193,11 @@ describe("remote persistence", () => {
     expect(upload).toHaveBeenCalledOnce();
     expect(migrated.items[0].imageUrl).toBe("/media/photo.png");
     expect(migrated.items[1].imageUrl).toBe("");
+  });
+
+  it("uses the binary image signature when historical Base64 metadata is wrong", () => {
+    const jpegMarkedAsPng = dataUrlToBlob("data:image/png;base64,/9j/");
+
+    expect(jpegMarkedAsPng.type).toBe("image/jpeg");
   });
 });
