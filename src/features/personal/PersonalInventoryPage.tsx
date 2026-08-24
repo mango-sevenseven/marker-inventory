@@ -43,6 +43,55 @@ interface LibraryColumn {
   categoryName: string;
 }
 
+type LibrarySort = "default" | "updated-desc" | "created-desc" | "name-asc" | "name-desc" | "price-asc" | "price-desc" | "started-desc" | "started-asc";
+
+const LIBRARY_SORT_OPTIONS: Array<{ value: LibrarySort; label: string }> = [
+  { value: "default", label: "默认顺序" },
+  { value: "updated-desc", label: "最近更新" },
+  { value: "created-desc", label: "最近添加" },
+  { value: "name-asc", label: "名称升序" },
+  { value: "name-desc", label: "名称降序" },
+  { value: "price-asc", label: "价格低到高" },
+  { value: "price-desc", label: "价格高到低" },
+  { value: "started-desc", label: "购入日期新到旧" },
+  { value: "started-asc", label: "购入日期旧到新" },
+];
+
+const LIBRARY_NAME_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+
+function compareOptional<T>(left: T | null, right: T | null, direction: 1 | -1, compare: (a: T, b: T) => number) {
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return compare(left, right) * direction;
+}
+
+function itemTimestamp(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function sortLibraryItems(items: Item[], sort: LibrarySort) {
+  if (sort === "default") return items;
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      let comparison = 0;
+      if (sort === "name-asc" || sort === "name-desc") {
+        comparison = LIBRARY_NAME_COLLATOR.compare(left.item.name, right.item.name) * (sort === "name-asc" ? 1 : -1);
+      } else if (sort === "price-asc" || sort === "price-desc") {
+        comparison = compareOptional(left.item.price, right.item.price, sort === "price-asc" ? 1 : -1, (a, b) => a - b);
+      } else if (sort === "started-asc" || sort === "started-desc") {
+        comparison = compareOptional(left.item.startedAt || null, right.item.startedAt || null, sort === "started-asc" ? 1 : -1, (a, b) => a.localeCompare(b));
+      } else {
+        const field = sort === "updated-desc" ? "updatedAt" : "createdAt";
+        comparison = compareOptional(itemTimestamp(left.item[field]), itemTimestamp(right.item[field]), -1, (a, b) => a - b);
+      }
+      return comparison || left.index - right.index;
+    })
+    .map(({ item }) => item);
+}
+
 function libraryColumnLabel(column: LibraryColumn, selectedCategory: string) {
   return column.categoryName && !selectedCategory
     ? `${column.categoryName} · ${column.attribute.name}`
@@ -370,9 +419,11 @@ function ItemTile({ item, store, onRequestActions }: { item: Item; store: Person
 function Library({ store }: { store: PersonalStore }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [filter, setFilter] = useState<ItemFilter>({ name: "", category: "" });
+  const [sort, setSort] = useState<LibrarySort>("default");
   const [viewMode, setViewMode] = useState<"table" | "tiles">("table");
   const [actionItemId, setActionItemId] = useState<string | null>(null);
-  const items = useMemo(() => filterItems(snapshot.items, filter), [snapshot.items, filter]);
+  const filteredItems = useMemo(() => filterItems(snapshot.items, filter), [snapshot.items, filter]);
+  const items = useMemo(() => sortLibraryItems(filteredItems, sort), [filteredItems, sort]);
   const actionItem = actionItemId ? snapshot.items.find((item) => item.id === actionItemId) : undefined;
   const columns = useMemo<LibraryColumn[]>(() => {
     const base = snapshot.baseAttributes.map((attribute) => ({ attribute, categoryName: "" }));
@@ -380,15 +431,16 @@ function Library({ store }: { store: PersonalStore }) {
     return [...base, ...categories.flatMap((category) => category.attributes.map((attribute) => ({ attribute, categoryName: category.name })))];
   }, [filter.category, snapshot.baseAttributes, snapshot.categories]);
   const columnWidths = useMemo(
-    () => columns.map((column) => libraryColumnWidth(column, items, filter.category)),
-    [columns, filter.category, items],
+    () => columns.map((column) => libraryColumnWidth(column, filteredItems, filter.category)),
+    [columns, filter.category, filteredItems],
   );
   const tableWidth = useMemo(() => columnWidths.reduce((total, width) => total + width, 112), [columnWidths]);
   return (
     <>
-      <div className="personal-library-toolbar mb-3 grid gap-1.5 md:grid-cols-[1fr_168px_auto]">
+      <div className="personal-library-toolbar mb-3 grid gap-1.5 md:grid-cols-[minmax(220px,1fr)_148px_154px_auto]">
         <Input aria-label="名称" placeholder="名称" value={filter.name} onChange={(event) => setFilter({ ...filter, name: event.target.value })} />
         <Select aria-label="类别" value={filter.category} onChange={(event) => setFilter({ ...filter, category: event.target.value })}><option value="">全部类别</option>{snapshot.categories.map((category) => <option key={category.id}>{category.name}</option>)}</Select>
+        <Select aria-label="排序方式" value={sort} onChange={(event) => setSort(event.target.value as LibrarySort)}>{LIBRARY_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select>
         <Button variant="primary" className="!w-auto" onClick={() => openItemDialog()}><Plus size={15} /> 添加物品</Button>
       </div>
       <div className="personal-library-summary">

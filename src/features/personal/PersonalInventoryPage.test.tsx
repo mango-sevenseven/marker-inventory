@@ -116,6 +116,31 @@ describe("personal item library", () => {
     expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
+  it("sorts filtered items consistently in table and tile views", () => {
+    const store = createPersonalStore(new MemoryStorage());
+    const electronicItems = store.getSnapshot().items.filter((item) => item.category === "电子产品");
+    electronicItems.forEach((item) => store.updateItem(item.id, { price: null }));
+    store.updateItem(electronicItems[0].id, { name: "高价测试物品", price: 20 });
+    store.updateItem(electronicItems[1].id, { name: "低价测试物品", price: 10 });
+    const { container } = render(<PersonalInventoryPage view="library" store={store} />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "类别" }), { target: { value: "电子产品" } });
+    const sortSelect = screen.getByRole("combobox", { name: "排序方式" });
+    expect(within(sortSelect).getAllByRole("option")).toHaveLength(9);
+
+    const tableNames = () => [...container.querySelectorAll<HTMLButtonElement>(".personal-library-table tbody td:first-child button")].map((button) => button.textContent);
+    fireEvent.change(sortSelect, { target: { value: "price-asc" } });
+    expect(tableNames().slice(0, 2)).toEqual(["低价测试物品", "高价测试物品"]);
+    fireEvent.change(sortSelect, { target: { value: "price-desc" } });
+    expect(tableNames().slice(0, 2)).toEqual(["高价测试物品", "低价测试物品"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "大图磁贴" }));
+    const tiles = screen.getByRole("list", { name: "物品大图磁贴" });
+    expect(within(tiles).getAllByRole("listitem")[0]).toHaveTextContent("高价测试物品");
+    fireEvent.change(sortSelect, { target: { value: "price-asc" } });
+    expect(within(tiles).getAllByRole("listitem")[0]).toHaveTextContent("低价测试物品");
+  });
+
   it("opens mobile item actions after a long press", () => {
     vi.useFakeTimers();
     const store = createPersonalStore(new MemoryStorage());
