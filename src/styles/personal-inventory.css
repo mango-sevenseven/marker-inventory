@@ -9,19 +9,23 @@
 .personal-library-tile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .personal-item-tile { min-width: 0; overflow: hidden; }
 .personal-item-tile-photo { position: relative; display: grid; width: 100%; aspect-ratio: 4 / 3; place-items: center; overflow: hidden; background: #eee5d1; }
+.personal-item-tile-photo::after { content: ""; position: absolute; inset: 0; z-index: 2; border: 2px solid #28231c; box-shadow: inset 0 0 0 1px rgba(40,35,28,.22); pointer-events: none; }
 .personal-item-tile-photo img { width: 100%; height: 100%; object-fit: cover; transition: transform 180ms ease; }
 .personal-item-tile-photo:hover img { transform: scale(1.025); }
 .personal-item-tile-placeholder { display: grid; place-items: center; gap: 5px; color: #8a7d66; }
 .personal-item-tile-placeholder svg { width: 32px; height: 32px; opacity: .7; }
-.personal-item-tile-body { padding: 10px 11px 11px; }
+.personal-item-tile-body { padding: 7px 9px 8px; }
 .personal-item-tile-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.personal-item-tile-title button { min-width: 0; overflow: hidden; color: #423627; font-size: 16px; font-weight: 700; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.personal-item-tile-title button { min-width: 0; overflow: hidden; color: #423627; font-size: 16px; font-weight: 700; line-height: 1.1; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .personal-item-tile-title button:hover { text-decoration: underline; }
-.personal-item-tile-title span { flex: none; padding: 2px 6px; border-radius: 999px; color: #6c5f4a; background: #eee5d1; font-size: 11px; }
-.personal-item-tile-body > p { margin-top: 3px; overflow: hidden; color: #887a64; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.personal-item-tile-footer { display: flex; align-items: end; justify-content: space-between; gap: 8px; margin-top: 9px; }
+.personal-item-tile-title span { flex: none; padding: 2px 6px; border-radius: 999px; color: #6c5f4a; background: #eee5d1; font-size: 11px; line-height: 1.1; }
+.personal-item-tile-body > p { margin-top: 1px; overflow: hidden; color: #887a64; font-size: 12px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.personal-item-tile-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; line-height: 1.1; }
 .personal-item-tile-footer > b { color: #9b6b31; font-size: 12px; white-space: nowrap; }
 .personal-item-tile-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
+.personal-item-tile-long-press { display: none; color: #887a64; font-size: 10px; white-space: nowrap; }
+.personal-mobile-item-actions-hint { margin: -5px 0 10px; color: #887a64; font-size: 13px; }
+.personal-mobile-item-action-buttons { display: grid; gap: 8px; }
 
 @media (max-width: 760px) {
   .personal-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -30,12 +34,16 @@
   .personal-library-table th { padding: 5px 6px; }
   .personal-library-table td { padding: 4px 6px; }
   .personal-library-tile-grid { gap: 8px; }
-  .personal-item-tile-body { padding: 8px; }
+  .personal-item-tile { touch-action: pan-y; -webkit-touch-callout: none; user-select: none; }
+  .personal-item-tile-body { padding: 6px 7px 7px; }
   .personal-item-tile-title { align-items: flex-start; gap: 4px; }
-  .personal-item-tile-title button { font-size: 14px; }
+  .personal-item-tile-title button { font-size: 14px; line-height: 1.05; }
   .personal-item-tile-title span { padding-inline: 5px; font-size: 10px; }
-  .personal-item-tile-footer { display: block; margin-top: 7px; }
-  .personal-item-tile-actions { justify-content: flex-start; margin-top: 5px; }
+  .personal-item-tile-body > p { line-height: 1.05; }
+  .personal-item-tile-footer { margin-top: 3px; }
+  .personal-item-tile-actions { display: none; }
+  .personal-item-tile-long-press { display: block; }
+  .personal-mobile-item-actions-dialog { align-self: end; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 640px) {
@@ -54,5 +62,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sticky-note, .sketch-hover-lift, .sketch-stroke-draw { animation: none !important; transition: none !important; }
+  .sticky-note, .sketch-hover-lift, .sketch-stroke-draw, .personal-item-tile-photo img { animation: none !important; transition: none !important; }
 }

@@ -14,7 +14,10 @@ class MemoryStorage implements Storage {
   setItem(key: string, value: string) { this.data.set(key, value); }
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("personal item library", () => {
   it("keeps the dashboard focused and opens its reusable item views", () => {
@@ -111,6 +114,29 @@ describe("personal item library", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "表格" }));
     expect(screen.getByRole("table")).toBeInTheDocument();
+  });
+
+  it("opens mobile item actions after a long press", () => {
+    vi.useFakeTimers();
+    const store = createPersonalStore(new MemoryStorage());
+    const item = store.getSnapshot().items.find((candidate) => candidate.id === "electronic03")!;
+    render(<PersonalInventoryPage view="library" store={store} />);
+    fireEvent.click(screen.getByRole("button", { name: "大图磁贴" }));
+
+    const tile = screen.getByRole("button", { name: `查看${item.name}详情` }).closest("[role='listitem']")!;
+    fireEvent.pointerDown(tile, { pointerType: "touch", clientX: 20, clientY: 20 });
+    act(() => vi.advanceTimersByTime(520));
+
+    expect(screen.getByRole("heading", { name: `操作 · ${item.name}` })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `编辑物品${item.name}` })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `删除物品${item.name}` })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消物品操作" }));
+    expect(screen.queryByRole("heading", { name: `操作 · ${item.name}` })).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(tile, { pointerType: "touch", clientX: 20, clientY: 20 });
+    fireEvent.pointerMove(tile, { pointerType: "touch", clientX: 40, clientY: 20 });
+    act(() => vi.advanceTimersByTime(520));
+    expect(screen.queryByRole("heading", { name: `操作 · ${item.name}` })).not.toBeInTheDocument();
   });
 
   it("adds a configurable base attribute from settings", () => {

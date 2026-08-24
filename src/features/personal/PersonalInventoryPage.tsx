@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, ArrowDown, ArrowUp, BarChart3, Box, CalendarDays, Heart, LayoutGrid, List, PackageOpen, Pencil, Plus, ShoppingBag, Sparkles, Trash2 } from "lucide-react";
 import { personalStore, type PersonalStore, type PersonalStoreSnapshot } from "@/data/personalStore";
 import { filterItems, isItemIncomplete } from "@/lib/itemFilters";
@@ -8,6 +8,7 @@ import type { AttributeDefinition, Item, ItemFilter } from "@/types/personalInve
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { StatsGrid } from "@/components/ui/StatCard";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/Table";
@@ -271,14 +272,75 @@ function ValueForMoneyTable({ snapshot }: { snapshot: PersonalStoreSnapshot }) {
   );
 }
 
-function ItemTile({ item, store }: { item: Item; store: PersonalStore }) {
+const MOBILE_LONG_PRESS_DELAY = 520;
+const MOBILE_LONG_PRESS_MOVE_TOLERANCE = 10;
+
+function MobileItemActionDialog({ item, store, onClose }: { item: Item; store: PersonalStore; onClose: () => void }) {
+  const remove = () => {
+    if (window.confirm(`确定删除“${item.name}”吗？删除后无法恢复。`)) store.removeItem(item.id);
+    onClose();
+  };
+  return (
+    <Modal open onClose={onClose} title={`操作 · ${item.name}`} className="personal-mobile-item-actions-dialog">
+      <p className="personal-mobile-item-actions-hint">选择要执行的操作。</p>
+      <div className="personal-mobile-item-action-buttons">
+        <Button variant="primary" aria-label={`编辑物品${item.name}`} onClick={() => { onClose(); openItemDialog(item.id); }}><Pencil size={15} /> 编辑</Button>
+        <Button variant="destructive" aria-label={`删除物品${item.name}`} onClick={remove}><Trash2 size={15} /> 删除</Button>
+        <Button aria-label="取消物品操作" onClick={onClose}>取消</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function ItemTile({ item, store, onRequestActions }: { item: Item; store: PersonalStore; onRequestActions: (itemId: string) => void }) {
   const [failedImageUrl, setFailedImageUrl] = useState("");
+  const longPressTimer = useRef<number | null>(null);
+  const pressOrigin = useRef({ x: 0, y: 0 });
+  const longPressTriggered = useRef(false);
   const imageUrl = item.imageUrl?.trim() ?? "";
   const showImage = imageUrl !== "" && failedImageUrl !== imageUrl;
   const description = [item.brand, item.model].filter(Boolean).join(" · ") || "暂无品牌或型号";
 
+  const cancelLongPress = () => {
+    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  };
+  useEffect(() => cancelLongPress, []);
+  const startLongPress = (event: ReactPointerEvent) => {
+    if (event.pointerType === "mouse") return;
+    cancelLongPress();
+    longPressTriggered.current = false;
+    pressOrigin.current = { x: event.clientX, y: event.clientY };
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTimer.current = null;
+      longPressTriggered.current = true;
+      onRequestActions(item.id);
+    }, MOBILE_LONG_PRESS_DELAY);
+  };
+  const moveLongPress = (event: ReactPointerEvent) => {
+    if (Math.hypot(event.clientX - pressOrigin.current.x, event.clientY - pressOrigin.current.y) > MOBILE_LONG_PRESS_MOVE_TOLERANCE) cancelLongPress();
+  };
+  const finishLongPress = () => {
+    cancelLongPress();
+    if (longPressTriggered.current) window.setTimeout(() => { longPressTriggered.current = false; }, 0);
+  };
+  const consumeLongPressClick = (event: ReactMouseEvent) => {
+    if (!longPressTriggered.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
-    <Card className="personal-item-tile" role="listitem" hoverLift={false}>
+    <Card
+      className="personal-item-tile"
+      role="listitem"
+      hoverLift={false}
+      onPointerDown={startLongPress}
+      onPointerMove={moveLongPress}
+      onPointerUp={finishLongPress}
+      onPointerCancel={finishLongPress}
+      onClickCapture={consumeLongPressClick}
+    >
       <button type="button" className="personal-item-tile-photo" aria-label={`查看${item.name}详情`} onClick={() => openItemDialog(item.id)}>
         {showImage ? (
           <img src={imageUrl} alt={item.name} loading="lazy" decoding="async" onError={() => setFailedImageUrl(imageUrl)} />
@@ -294,6 +356,7 @@ function ItemTile({ item, store }: { item: Item; store: PersonalStore }) {
         <p title={description}>{description}</p>
         <div className="personal-item-tile-footer">
           <b>{item.price === null ? "价格未填写" : money(item.price)}</b>
+          <small className="personal-item-tile-long-press">长按操作</small>
           <div className="personal-item-tile-actions">
             <Button size="sm" className="!w-auto !px-1.5 !py-0.5" aria-label={`编辑${item.name}`} onClick={() => openItemDialog(item.id)}><Pencil size={12} /> 编辑</Button>
             <Button size="sm" variant="destructive" className="!w-auto !px-1.5 !py-0.5" aria-label={`删除${item.name}`} onClick={() => { if (window.confirm(`确定删除“${item.name}”吗？删除后无法恢复。`)) store.removeItem(item.id); }}><Trash2 size={12} /> 删除</Button>
@@ -308,7 +371,9 @@ function Library({ store }: { store: PersonalStore }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [filter, setFilter] = useState<ItemFilter>({ name: "", category: "" });
   const [viewMode, setViewMode] = useState<"table" | "tiles">("table");
+  const [actionItemId, setActionItemId] = useState<string | null>(null);
   const items = useMemo(() => filterItems(snapshot.items, filter), [snapshot.items, filter]);
+  const actionItem = actionItemId ? snapshot.items.find((item) => item.id === actionItemId) : undefined;
   const columns = useMemo<LibraryColumn[]>(() => {
     const base = snapshot.baseAttributes.map((attribute) => ({ attribute, categoryName: "" }));
     const categories = filter.category ? snapshot.categories.filter((category) => category.name === filter.category) : snapshot.categories;
@@ -354,9 +419,10 @@ function Library({ store }: { store: PersonalStore }) {
           </TableRow>)}</TableBody>
         </Table>
       </div> : <div className="personal-library-tile-grid" role="list" aria-label="物品大图磁贴">
-        {items.map((item) => <ItemTile key={item.id} item={item} store={store} />)}
+        {items.map((item) => <ItemTile key={item.id} item={item} store={store} onRequestActions={setActionItemId} />)}
       </div>}
       {items.length === 0 ? <Card className="p-8 text-center"><PackageOpen className="mx-auto mb-2" /><p className="font-bold">没有符合条件的物品</p><p className="text-sm text-muted">调整搜索或筛选条件。</p></Card> : null}
+      {actionItem ? <MobileItemActionDialog item={actionItem} store={store} onClose={() => setActionItemId(null)} /> : null}
     </>
   );
 }
