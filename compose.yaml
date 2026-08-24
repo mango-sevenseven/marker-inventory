@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
     restart: unless-stopped
     environment:
       PORT: 3000
@@ -29,6 +31,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.27-alpine}
     restart: unless-stopped
     depends_on:
       api:
