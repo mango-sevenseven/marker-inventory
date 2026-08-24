@@ -1,7 +1,14 @@
 .personal-stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.personal-library-table table { font-size: 13px; }
+.personal-library-table th { padding: 6px 10px; }
+.personal-library-table td { padding: 5px 10px; }
 
 @media (max-width: 760px) {
   .personal-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .personal-library-toolbar { grid-template-columns: minmax(0, 1fr) 132px; }
+  .personal-library-toolbar > :last-child { grid-column: 1 / -1; justify-self: start; }
+  .personal-library-table th { padding: 5px 8px; }
+  .personal-library-table td { padding: 4px 8px; }
 }
 
 @media (max-width: 640px) {

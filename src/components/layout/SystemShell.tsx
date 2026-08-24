@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode, type TouchEvent } from "react";
 import { Menu, Plus, Search, X } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { navigation } from "@/config/navigation";
@@ -74,6 +74,7 @@ function Brand() {
 export function SystemShell() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const drawerGesture = useRef<{ x: number; y: number; mode: "open" | "close" } | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureModule, setCaptureModule] = useState<LifeModule>("life");
   const [captureKind, setCaptureKind] = useState<CaptureKind>("record");
@@ -83,11 +84,50 @@ export function SystemShell() {
   const childPage = navigation.flatMap((item) => (item.children ?? []).map((child) => ({ ...child, module: item.module }))).find((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`));
   const page = isItemSettings ? navigation.find((item) => item.path === "/life") : childPage ?? navigation.find((item) => item.path === location.pathname) ?? navigation.find((item) => item.path !== "/" && location.pathname.startsWith(`${item.path}/`));
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    document.body.classList.add("system-menu-open");
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.classList.remove("system-menu-open");
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
+
+  const startDrawerGesture = (event: TouchEvent<HTMLDivElement>) => {
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const mode = menuOpen ? "close" : "open";
+    const canStart = menuOpen
+      ? Boolean(target?.closest("#system-navigation"))
+      : touch.clientX <= 24;
+    drawerGesture.current = canStart ? { x: touch.clientX, y: touch.clientY, mode } : null;
+  };
+
+  const finishDrawerGesture = (event: TouchEvent<HTMLDivElement>) => {
+    const start = drawerGesture.current;
+    drawerGesture.current = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch) return;
+    const horizontalDistance = touch.clientX - start.x;
+    const verticalDistance = touch.clientY - start.y;
+    if (Math.abs(horizontalDistance) < 56 || Math.abs(horizontalDistance) <= Math.abs(verticalDistance) * 1.2) return;
+    if (start.mode === "open" && horizontalDistance > 0) setMenuOpen(true);
+    if (start.mode === "close" && horizontalDistance < 0) setMenuOpen(false);
+  };
+
   return (
     <QuickCaptureContext.Provider value={{ openQuickCapture }}>
-      <div className="system-app">
-        <aside className={`system-nav ${menuOpen ? "is-open" : ""}`}>
-          <Brand />
+      <div className="system-app" onTouchStart={startDrawerGesture} onTouchEnd={finishDrawerGesture} onTouchCancel={() => { drawerGesture.current = null; }}>
+        <aside id="system-navigation" className={`system-nav ${menuOpen ? "is-open" : ""}`}>
+          <div className="system-nav-header">
+            <Brand />
+            <button className="system-nav-close" onClick={() => setMenuOpen(false)} aria-label="关闭侧边导航"><X size={21} /></button>
+          </div>
           <nav aria-label="主导航">
             {navigation.map(({ path, label, icon: Icon, accent, children }) => <div className={`system-nav-group ${children ? "has-children" : ""}`} key={path}><NavLink to={path} end={path === "/"} className={({ isActive }) => isActive || (isItemSettings && path === "/life") ? "active" : undefined} onClick={() => setMenuOpen(false)} style={{ "--nav-accent": accent } as React.CSSProperties}><Icon size={21} strokeWidth={2.1} /><span>{label}</span></NavLink>{children ? <div className="system-subnav" role="group" aria-label={`${label}子菜单`}>{children.map(({ path: childPath, label: childLabel, icon: ChildIcon }) => <NavLink key={childPath} to={childPath} className={({ isActive }) => isActive || (isItemSettings && childPath === "/life/items") ? "active" : undefined} onClick={() => setMenuOpen(false)}><ChildIcon size={15} /><span>{childLabel}</span></NavLink>)}</div> : null}</div>)}
           </nav>
@@ -95,14 +135,14 @@ export function SystemShell() {
         </aside>
         <div className="system-workspace">
           <header className="system-topbar">
-            <button className="system-menu-button" onClick={() => setMenuOpen((value) => !value)} aria-label="打开导航"><Menu size={22} /></button>
+            <button className="system-menu-button" onClick={() => setMenuOpen((value) => !value)} aria-label={menuOpen ? "关闭导航" : "打开导航"} aria-controls="system-navigation" aria-expanded={menuOpen}><Menu size={22} /></button>
             <div className="system-mobile-title">{page?.label ?? "有序生活"}</div>
             <div className="system-search"><Search size={17} /><input aria-label="全局搜索" placeholder="搜索任务、日程或物品…" /></div>
             <button className="quick-add-button" onClick={() => openQuickCapture(page?.module, "record")}><Plus size={18} /> <span>记录发生</span></button>
           </header>
           <main className="system-main"><Outlet /></main>
         </div>
-        {menuOpen ? <button className="system-nav-scrim" aria-label="关闭导航" onClick={() => setMenuOpen(false)} /> : null}
+        {menuOpen ? <button className="system-nav-scrim" aria-label="关闭导航遮罩" onClick={() => setMenuOpen(false)} /> : null}
         <QuickCapture key={`${captureOpen}-${captureModule}-${captureKind}-${captureDate}`} open={captureOpen} initialModule={captureModule} initialKind={captureKind} initialDate={captureDate} onClose={() => setCaptureOpen(false)} />
         <ItemDialogHost />
       </div>

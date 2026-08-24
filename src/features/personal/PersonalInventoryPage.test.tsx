@@ -53,6 +53,8 @@ describe("personal item library", () => {
     store.updateItem(clothing.id, { customValues: { "clothing-size": "M" } });
     render(<PersonalInventoryPage view="library" store={store} />);
 
+    expect(screen.getByRole("table").closest(".personal-library-table")).not.toBeNull();
+
     const categorySelect = screen.getByRole("combobox", { name: "类别" });
     expect(categorySelect).toHaveValue("");
     expect(within(categorySelect).getByRole("option", { name: "全部类别" })).toBeInTheDocument();

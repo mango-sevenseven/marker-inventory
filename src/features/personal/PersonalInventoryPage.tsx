@@ -255,14 +255,14 @@ function Library({ store }: { store: PersonalStore }) {
   }, [filter.category, snapshot.baseAttributes, snapshot.categories]);
   return (
     <>
-      <div className="mb-4 grid gap-2 md:grid-cols-[1fr_180px_auto]">
+      <div className="personal-library-toolbar mb-3 grid gap-1.5 md:grid-cols-[1fr_168px_auto]">
         <Input aria-label="名称" placeholder="名称" value={filter.name} onChange={(event) => setFilter({ ...filter, name: event.target.value })} />
         <Select aria-label="类别" value={filter.category} onChange={(event) => setFilter({ ...filter, category: event.target.value })}><option value="">全部类别</option>{snapshot.categories.map((category) => <option key={category.id}>{category.name}</option>)}</Select>
         <Button variant="primary" className="!w-auto" onClick={() => openItemDialog()}><Plus size={15} /> 添加物品</Button>
       </div>
-      <p className="mb-2 text-xs text-muted">找到 {items.length} 件物品</p>
+      <p className="mb-1.5 text-xs text-muted">找到 {items.length} 件物品</p>
       <div className="overflow-x-auto pb-2">
-        <Table style={{ minWidth: Math.max(720, columns.length * 140 + 180) }}>
+        <Table className="personal-library-table" style={{ minWidth: Math.max(640, columns.length * 112 + 158) }}>
           <TableHead><tr>
             {columns.map(({ attribute, categoryName }) => <TableHeaderCell key={`${categoryName}-${attribute.id}`} className="whitespace-nowrap">{categoryName && !filter.category ? `${categoryName} · ${attribute.name}` : attribute.name}</TableHeaderCell>)}
             <TableHeaderCell className="whitespace-nowrap">操作</TableHeaderCell>
@@ -270,9 +270,9 @@ function Library({ store }: { store: PersonalStore }) {
           <TableBody>{items.map((item) => <TableRow key={item.id}>
             {columns.map(({ attribute, categoryName }) => { const displayValue = categoryName && categoryName !== item.category ? "—" : attributeDisplayValue(item, attribute); return <TableCell key={`${categoryName}-${attribute.id}`} className="max-w-[220px] whitespace-nowrap"><div className="truncate" title={displayValue}>{attribute.itemKey === "name" ? <button className="text-left font-bold hover:underline" onClick={() => openItemDialog(item.id)}>{displayValue}</button> : displayValue}</div></TableCell>; })}
             <TableCell>
-              <div className="flex gap-2">
-                <Button size="sm" className="!w-auto" aria-label={`编辑${item.name}`} onClick={() => openItemDialog(item.id)}><Pencil size={13} /> 编辑</Button>
-                <Button size="sm" variant="destructive" className="!w-auto" aria-label={`删除${item.name}`} onClick={() => { if (window.confirm(`确定删除“${item.name}”吗？删除后无法恢复。`)) store.removeItem(item.id); }}><Trash2 size={13} /> 删除</Button>
+              <div className="flex gap-1">
+                <Button size="sm" className="!w-auto !px-2 !py-0.5" aria-label={`编辑${item.name}`} onClick={() => openItemDialog(item.id)}><Pencil size={12} /> 编辑</Button>
+                <Button size="sm" variant="destructive" className="!w-auto !px-2 !py-0.5" aria-label={`删除${item.name}`} onClick={() => { if (window.confirm(`确定删除“${item.name}”吗？删除后无法恢复。`)) store.removeItem(item.id); }}><Trash2 size={12} /> 删除</Button>
               </div>
             </TableCell>
           </TableRow>)}</TableBody>

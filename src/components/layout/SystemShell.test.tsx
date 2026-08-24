@@ -6,6 +6,40 @@ import { SystemShell } from "./SystemShell";
 afterEach(cleanup);
 
 describe("system navigation", () => {
+  it("opens and closes the mobile drawer accessibly", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route element={<SystemShell />}>
+            <Route index element={<h1>今日内容</h1>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const openButton = screen.getByRole("button", { name: "打开导航" });
+    const navigation = document.getElementById("system-navigation");
+    expect(openButton).toHaveAttribute("aria-expanded", "false");
+    expect(navigation).not.toHaveClass("is-open");
+
+    fireEvent.click(openButton);
+    expect(screen.getByRole("button", { name: "关闭导航" })).toHaveAttribute("aria-expanded", "true");
+    expect(navigation).toHaveClass("is-open");
+    expect(document.body).toHaveClass("system-menu-open");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "打开导航" })).toHaveAttribute("aria-expanded", "false");
+    expect(navigation).not.toHaveClass("is-open");
+    expect(document.body).not.toHaveClass("system-menu-open");
+
+    const app = document.querySelector(".system-app")!;
+    fireEvent.touchStart(app, { changedTouches: [{ clientX: 10, clientY: 120 }] });
+    fireEvent.touchEnd(app, { changedTouches: [{ clientX: 92, clientY: 124 }] });
+    expect(navigation).toHaveClass("is-open");
+    fireEvent.click(screen.getByRole("button", { name: "关闭侧边导航" }));
+    expect(navigation).not.toHaveClass("is-open");
+  });
+
   it("renders life modules as sidebar subnavigation and keeps route state visible", () => {
     render(
       <MemoryRouter initialEntries={["/life/reminders"]}>
