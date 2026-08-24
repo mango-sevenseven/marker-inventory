@@ -23,7 +23,7 @@ const DEFAULT_MEMOS = [
   "• 参加下周的画友交流会！",
 ];
 
-type PersistedStore = {
+export type MarkerStoreSnapshot = {
   markers: Marker[];
   brands: Brand[];
   series: Series[];
@@ -42,12 +42,12 @@ function canUseStorage() {
   }
 }
 
-function tryLoad(key: string): PersistedStore | null {
+function tryLoad(key: string): MarkerStoreSnapshot | null {
   if (!canUseStorage()) return null;
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PersistedStore>;
+    const parsed = JSON.parse(raw) as Partial<MarkerStoreSnapshot>;
     if (!Array.isArray(parsed.markers) || !Array.isArray(parsed.brands)) return null;
     const series = Array.isArray(parsed.series)
       ? parsed.series
@@ -67,11 +67,11 @@ function tryLoad(key: string): PersistedStore | null {
   }
 }
 
-function loadPersisted(): PersistedStore | null {
+function loadPersisted(): MarkerStoreSnapshot | null {
   return tryLoad(STORAGE_KEY) ?? tryLoad("marker_inventory_store_v1");
 }
 
-function getSnapshot(): PersistedStore {
+function getSnapshot(): MarkerStoreSnapshot {
   return {
     markers: markersStore,
     brands: brandsStore,
@@ -84,7 +84,7 @@ function getSnapshot(): PersistedStore {
   };
 }
 
-function applySnapshot(data: PersistedStore) {
+function applySnapshot(data: MarkerStoreSnapshot) {
   markersStore = data.markers;
   brandsStore = data.brands;
   seriesStore = data.series;
@@ -194,7 +194,7 @@ export function restoreBackupSnapshot() {
   const raw = window.localStorage.getItem(BACKUP_KEY);
   if (!raw) return false;
   try {
-    const data = JSON.parse(raw) as PersistedStore;
+    const data = JSON.parse(raw) as MarkerStoreSnapshot;
     if (!Array.isArray(data.markers) || !Array.isArray(data.brands)) return false;
     applySnapshot(data);
     persist();
@@ -205,7 +205,7 @@ export function restoreBackupSnapshot() {
   }
 }
 
-export function importStoreData(data: Partial<PersistedStore>) {
+export function importStoreData(data: Partial<MarkerStoreSnapshot>) {
   if (Array.isArray(data.markers)) markersStore = data.markers;
   if (Array.isArray(data.brands)) brandsStore = data.brands;
   if (Array.isArray(data.series)) seriesStore = data.series;
@@ -242,4 +242,10 @@ export function subscribeDataChanges(callback: () => void) {
 
 export function getStoreSnapshot() {
   return getSnapshot();
+}
+
+export function replaceStoreSnapshot(data: MarkerStoreSnapshot) {
+  applySnapshot(data);
+  persist();
+  notifyDataChanged();
 }

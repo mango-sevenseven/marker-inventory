@@ -1,3 +1,5 @@
+import { uploadDataUrl } from "@/data/remotePersistence";
+
 const MAX_IMAGE_EDGE = 1200;
 const JPEG_QUALITY = 0.82;
 
@@ -32,4 +34,16 @@ export async function prepareItemImage(file: File): Promise<string> {
   if (!context) return source;
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+}
+
+export async function prepareAndUploadItemImage(
+  file: File,
+  upload: (dataUrl: string) => Promise<string> = uploadDataUrl,
+): Promise<string> {
+  const prepared = await prepareItemImage(file);
+  try {
+    return await upload(prepared);
+  } catch {
+    return prepared;
+  }
 }

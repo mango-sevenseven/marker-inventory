@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-server
+.git
+.github
+.agent
+.superpowers
+.codex-tmp
+nas-data
+data
+*.log
+.env*
+!.env.example

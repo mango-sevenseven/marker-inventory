@@ -11,6 +11,12 @@ const base = process.env.VITE_BASE_PATH ?? "/";
 export default defineConfig({
   base,
   plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      "/api": "http://127.0.0.1:3000",
+      "/media": "http://127.0.0.1:3000",
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

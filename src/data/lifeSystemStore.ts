@@ -95,6 +95,9 @@ export function createLifeSystemStore(storage?: Storage, today = getTodayIso()) 
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    replaceSnapshot(next: LifeSystemSnapshot) {
+      publish(next);
+    },
     toggleTask(id: string) {
       publish({ ...snapshot, tasks: snapshot.tasks.map((task) => task.id === id ? { ...task, done: !task.done, progress: task.done ? Math.min(task.progress, 95) : 100 } : task) });
     },

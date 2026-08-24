@@ -1,6 +1,6 @@
 # 马克笔管理系统
 
-手绘风格的马克笔收藏与库存管理 Web 应用。基于 React + Vite + Tailwind CSS + [Rough.js](https://roughjs.com/) 构建。
+手绘风格的个人物品、马克笔库存与生活管理 Web 应用。前端使用 React/Vite，后端使用 Node.js/TypeScript，业务数据保存在 SQLite，物品图片保存在 NAS 文件目录。
 
 ## 功能
 
@@ -9,6 +9,8 @@
 - 库存管理、品牌与系列、购买记录、心愿清单
 - 统计分析图表（饼图、柱状图、折线图）
 - 导出与备份、设置
+- 个人物品、穿搭、任务、项目、日记与旅行管理
+- NAS 持久化、图片上传和浏览器旧数据自动迁移
 
 ## 技术栈
 
@@ -17,27 +19,48 @@
 - Tailwind CSS 4
 - React Router 7
 - Recharts + Rough.js（手绘风图表与 UI 边框）
+- Express + SQLite
+- Docker Compose + Nginx
 
-## 在线演示
+## NAS 部署
 
-GitHub Pages：**https://mango-sevenseven.github.io/marker-inventory/**
+NAS 需要安装 Docker Compose。进入项目目录后执行：
 
-（推送 `main` 分支后由 GitHub Actions 自动部署，首次约需 1–2 分钟。）
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+浏览器访问 `http://NAS-IP:8080`。如需其他端口，修改 `.env` 中的 `APP_PORT`。
+
+Compose 只向宿主机发布 Nginx 端口，API 的 3000 端口不会直接暴露。运行数据位于：
+
+- `nas-data/database/app.sqlite`：业务状态和图片元数据
+- `nas-data/uploads/`：JPG、PNG、WebP 图片文件
+
+首次从已有浏览器访问 NAS 版本时，如果服务器还没有数据，应用会自动把当前 `localStorage` 快照写入 SQLite；其中的 Base64 物品图片会自动转存到上传目录。服务器已有数据时始终以服务器数据为准。
 
 ## 本地运行
 
 ```bash
 npm install
+npm run dev:server
+```
+
+再开一个终端：
+
+```bash
 npm run dev
 ```
 
-浏览器打开终端显示的地址（默认 `http://localhost:5173`）。
+浏览器打开 `http://localhost:5173`。Vite 会把 `/api` 和 `/media` 转发到本地 3000 端口。
 
 ## 构建
 
 ```bash
 npm run build
-npm run preview
+npm run build:server
+npm test
 ```
 
 ## GitHub Pages 本地预览
@@ -47,9 +70,21 @@ npm run build:pages
 npm run preview
 ```
 
-## 说明
+## 备份与升级
 
-当前使用本地 Mock 数据，无需后端即可运行演示。
+备份时必须同时保存 `nas-data/database` 和 `nas-data/uploads`。为获得一致的 SQLite 备份，推荐先执行 `docker compose stop api`，复制两个目录后再执行 `docker compose start api`。
+
+升级代码后执行：
+
+```bash
+docker compose up -d --build
+```
+
+容器重建不会删除挂载目录中的数据库和图片。
+
+## 无登录部署的安全边界
+
+本项目不包含登录系统。请仅在可信局域网中开放端口；外网访问推荐先连接 NAS 所在 VPN。不要直接把端口映射到公网。若必须公网访问，应在 NAS 反向代理层增加 HTTPS 和访问认证。
 
 ## License
 

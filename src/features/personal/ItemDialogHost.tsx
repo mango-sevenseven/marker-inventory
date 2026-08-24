@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
-import { prepareItemImage } from "@/lib/itemImage";
+import { prepareAndUploadItemImage } from "@/lib/itemImage";
 
 const blankItem = (): Item => {
   const now = new Date().toISOString();
@@ -101,7 +101,7 @@ export function ItemDialogHost({ store = personalStore }: { store?: typeof perso
     setImageBusy(true);
     setError("");
     try {
-      field("imageUrl", await prepareItemImage(file));
+      field("imageUrl", await prepareAndUploadItemImage(file));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "图片处理失败");
     } finally {

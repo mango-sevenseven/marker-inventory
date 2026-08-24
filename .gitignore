@@ -4,7 +4,12 @@ node_modules/
 # build
 dist/
 dist-ssr/
+dist-server/
 *.local
+
+# NAS runtime data
+nas-data/
+/data/
 
 # env
 .env
