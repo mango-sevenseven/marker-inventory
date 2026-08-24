@@ -5,7 +5,8 @@ FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY scripts ./scripts
-RUN npm ci
+RUN npm ci --ignore-scripts \
+  && node scripts/patch-react-pageflip-enhanced.cjs
 
 COPY index.html vite.config.ts tsconfig.json ./
 COPY src ./src

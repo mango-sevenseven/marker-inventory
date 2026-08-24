@@ -37,6 +37,9 @@ docker compose up -d --build
 `NGINX_IMAGE` 指定可访问的镜像地址；示例见 `.env.example`。该设置只影响
 本项目构建，不会修改 NAS 的全局 Docker 镜像源。
 
+后端镜像会在构建阶段编译 SQLite 原生模块，因此首次构建时间较长；编译工具
+不会进入最终运行镜像。
+
 Compose 只向宿主机发布 Nginx 端口，API 的 3000 端口不会直接暴露。运行数据位于：
 
 - `nas-data/database/app.sqlite`：业务状态和图片元数据

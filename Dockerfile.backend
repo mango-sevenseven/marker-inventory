@@ -4,7 +4,10 @@ FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY scripts ./scripts
-RUN npm ci
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+RUN npm ci --ignore-scripts && npm rebuild better-sqlite3
 
 COPY server ./server
 RUN npm run build:server && npm prune --omit=dev
