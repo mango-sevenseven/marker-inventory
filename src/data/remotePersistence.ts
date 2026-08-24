@@ -15,6 +15,7 @@ export interface StateAdapter<T> {
   replaceSnapshot: (snapshot: T) => void;
   subscribe: (listener: () => void) => () => void;
   migrate?: (snapshot: T) => Promise<T>;
+  preferLocal?: boolean;
 }
 
 export interface RemoteStateClient {
@@ -26,7 +27,20 @@ export interface RemoteStateClient {
 interface RemoteStateClientOptions {
   apiBase?: string;
   fetchImpl?: typeof fetch;
+  requestTimeoutMs?: number;
 }
+
+interface StateWriterOptions {
+  retryDelayMs?: number;
+  onSaved?: (key: RemoteStateKey) => void;
+}
+
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): unknown;
+}
+
+const DIRTY_STATE_STORAGE_KEY = "marker_inventory_remote_dirty_v1";
 
 function apiPath(base: string, path: string) {
   return `${base.replace(/\/$/, "")}${path}`;
@@ -44,16 +58,26 @@ async function responseError(response: Response) {
 export function createRemoteStateClient(options: RemoteStateClientOptions = {}): RemoteStateClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const base = options.apiBase ?? "";
+  const requestTimeoutMs = options.requestTimeoutMs ?? 5000;
+  const request = async (path: string, init: RequestInit = {}) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+    try {
+      return await fetchImpl(apiPath(base, path), { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
   return {
     async readState<T>(key: RemoteStateKey) {
-      const response = await fetchImpl(apiPath(base, `/api/state/${key}`), { cache: "no-store" });
+      const response = await request(`/api/state/${key}`, { cache: "no-store" });
       if (response.status === 404) return null;
       if (!response.ok) throw new Error(await responseError(response));
       const body = await response.json() as { data: T };
       return body.data;
     },
     async saveState<T>(key: RemoteStateKey, data: T) {
-      const response = await fetchImpl(apiPath(base, `/api/state/${key}`), {
+      const response = await request(`/api/state/${key}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data }),
@@ -63,7 +87,7 @@ export function createRemoteStateClient(options: RemoteStateClientOptions = {}):
     async uploadImage(blob: Blob, filename = "item-image") {
       const form = new FormData();
       form.append("image", blob, filename);
-      const response = await fetchImpl(apiPath(base, "/api/uploads"), { method: "POST", body: form });
+      const response = await request("/api/uploads", { method: "POST", body: form });
       if (!response.ok) throw new Error(await responseError(response));
       const body = await response.json() as { url: string };
       return body.url;
@@ -71,20 +95,35 @@ export function createRemoteStateClient(options: RemoteStateClientOptions = {}):
   };
 }
 
-export function createQueuedStateWriter(client: RemoteStateClient, delayMs = 350) {
+export function createQueuedStateWriter(client: RemoteStateClient, delayMs = 350, options: StateWriterOptions = {}) {
   const timers = new Map<RemoteStateKey, ReturnType<typeof setTimeout>>();
   const pending = new Map<RemoteStateKey, unknown>();
+  const inFlight = new Map<RemoteStateKey, Promise<void>>();
+  const retryDelayMs = options.retryDelayMs ?? 2000;
 
   const save = async (key: RemoteStateKey) => {
     timers.delete(key);
+    if (inFlight.has(key)) return;
     const data = pending.get(key);
     pending.delete(key);
     if (data === undefined) return;
-    try {
-      await client.saveState(key, data);
-    } catch {
-      if (!pending.has(key)) pending.set(key, data);
-    }
+    const operation = (async () => {
+      let failed = false;
+      try {
+        await client.saveState(key, data);
+        if (!pending.has(key)) options.onSaved?.(key);
+      } catch {
+        failed = true;
+        if (!pending.has(key)) pending.set(key, data);
+      } finally {
+        inFlight.delete(key);
+        if (pending.has(key) && !timers.has(key)) {
+          timers.set(key, setTimeout(() => void save(key), failed ? retryDelayMs : 0));
+        }
+      }
+    })();
+    inFlight.set(key, operation);
+    await operation;
   };
 
   return {
@@ -108,14 +147,54 @@ export function createQueuedStateWriter(client: RemoteStateClient, delayMs = 350
 export async function synchronizeStateAdapter<T>(adapter: StateAdapter<T>, client: RemoteStateClient) {
   try {
     const remote = await client.readState<T>(adapter.key);
-    const source = remote ?? adapter.getSnapshot();
+    const local = adapter.getSnapshot();
+    const source = adapter.preferLocal ? local : remote ?? local;
     const migrated = adapter.migrate ? await adapter.migrate(source) : source;
-    if (remote !== null || migrated !== source) adapter.replaceSnapshot(migrated);
-    if (remote === null || migrated !== source) await client.saveState(adapter.key, migrated);
+    if ((!adapter.preferLocal && remote !== null) || migrated !== source) adapter.replaceSnapshot(migrated);
+    if (adapter.preferLocal || remote === null || migrated !== source) {
+      await client.saveState(adapter.key, migrated);
+    }
     return true;
   } catch {
     return false;
   }
+}
+
+export function createDirtyStateTracker(storage?: StorageLike) {
+  let dirty = new Set<RemoteStateKey>();
+  try {
+    const parsed = JSON.parse(storage?.getItem(DIRTY_STATE_STORAGE_KEY) ?? "[]") as unknown;
+    if (Array.isArray(parsed)) {
+      dirty = new Set(parsed.filter((key): key is RemoteStateKey => [
+        "marker-inventory",
+        "personal-inventory",
+        "life-system",
+        "color-swatches",
+      ].includes(key)));
+    }
+  } catch {
+    dirty = new Set();
+  }
+
+  const persist = () => {
+    try {
+      storage?.setItem(DIRTY_STATE_STORAGE_KEY, JSON.stringify([...dirty]));
+    } catch {
+      // The in-memory marker still protects the current page session.
+    }
+  };
+
+  return {
+    has: (key: RemoteStateKey) => dirty.has(key),
+    mark(key: RemoteStateKey) {
+      dirty.add(key);
+      persist();
+    },
+    clear(key: RemoteStateKey) {
+      dirty.delete(key);
+      persist();
+    },
+  };
 }
 
 function dataUrlToBlob(dataUrl: string) {
@@ -152,11 +231,14 @@ export async function migratePersonalItemImages<
 
 const apiBase = import.meta.env.VITE_API_URL ?? "";
 const defaultClient = createRemoteStateClient({ apiBase });
-const writer = createQueuedStateWriter(defaultClient);
+const browserStorage = typeof window === "undefined" ? undefined : window.localStorage;
+const dirtyState = createDirtyStateTracker(browserStorage);
+const writer = createQueuedStateWriter(defaultClient, 350, { onSaved: (key) => dirtyState.clear(key) });
 let initialized = false;
 let unsubscribers: Array<() => void> = [];
 
 export function queueRemoteState<T>(key: RemoteStateKey, data: T) {
+  dirtyState.mark(key);
   writer.queue(key, data);
 }
 
@@ -175,6 +257,7 @@ export async function initializeRemotePersistence() {
       getSnapshot: getStoreSnapshot,
       replaceSnapshot: (snapshot) => replaceStoreSnapshot(snapshot as ReturnType<typeof getStoreSnapshot>),
       subscribe: subscribeDataChanges,
+      preferLocal: dirtyState.has("marker-inventory"),
     },
     {
       key: "personal-inventory",
@@ -182,24 +265,30 @@ export async function initializeRemotePersistence() {
       replaceSnapshot: (snapshot) => personalStore.replaceSnapshot(snapshot as PersonalStoreSnapshot),
       subscribe: personalStore.subscribe,
       migrate: (snapshot) => migratePersonalItemImages(snapshot as PersonalStoreSnapshot, uploadDataUrl),
+      preferLocal: dirtyState.has("personal-inventory"),
     },
     {
       key: "life-system",
       getSnapshot: lifeSystemStore.getSnapshot,
       replaceSnapshot: (snapshot) => lifeSystemStore.replaceSnapshot(snapshot as ReturnType<typeof lifeSystemStore.getSnapshot>),
       subscribe: lifeSystemStore.subscribe,
+      preferLocal: dirtyState.has("life-system"),
     },
     {
       key: "color-swatches",
       getSnapshot: colorSwatchesStore.getSnapshot,
       replaceSnapshot: (snapshot) => colorSwatchesStore.replaceSnapshot(snapshot as ReturnType<typeof colorSwatchesStore.getSnapshot>),
       subscribe: colorSwatchesStore.subscribe,
+      preferLocal: dirtyState.has("color-swatches"),
     },
   ];
 
-  await Promise.all(adapters.map((adapter) => synchronizeStateAdapter(adapter, defaultClient)));
+  const connected = await Promise.all(adapters.map((adapter) => synchronizeStateAdapter(adapter, defaultClient)));
+  connected.forEach((isConnected, index) => {
+    if (isConnected) dirtyState.clear(adapters[index].key);
+  });
   unsubscribers = adapters.map((adapter) => adapter.subscribe(() => {
-    writer.queue(adapter.key, adapter.getSnapshot());
+    queueRemoteState(adapter.key, adapter.getSnapshot());
   }));
 }
 

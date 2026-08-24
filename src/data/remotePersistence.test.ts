@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createQueuedStateWriter,
+  createDirtyStateTracker,
   createRemoteStateClient,
   migratePersonalItemImages,
   synchronizeStateAdapter,
@@ -91,6 +92,89 @@ describe("remote persistence", () => {
 
     expect(saveState).toHaveBeenCalledTimes(1);
     expect(saveState).toHaveBeenCalledWith("life-system", { value: 2 });
+  });
+
+  it("retries a queued snapshot after a temporary save failure", async () => {
+    vi.useFakeTimers();
+    const saveState = vi.fn<RemoteStateClient["saveState"]>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(undefined);
+    const writer = createQueuedStateWriter({ saveState } as RemoteStateClient, 100, { retryDelayMs: 200 });
+
+    writer.queue("marker-inventory", { value: 1 });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveState).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(saveState).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes writes for the same key so an older response cannot overwrite newer data", async () => {
+    vi.useFakeTimers();
+    let finishFirst: (() => void) | undefined;
+    const firstSave = new Promise<void>((resolve) => { finishFirst = resolve; });
+    const saveState = vi.fn<RemoteStateClient["saveState"]>()
+      .mockReturnValueOnce(firstSave)
+      .mockResolvedValue(undefined);
+    const writer = createQueuedStateWriter({ saveState } as RemoteStateClient, 100);
+
+    writer.queue("personal-inventory", { value: 1 });
+    await vi.advanceTimersByTimeAsync(100);
+    writer.queue("personal-inventory", { value: 2 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(saveState).toHaveBeenCalledTimes(1);
+    finishFirst?.();
+    await vi.runAllTimersAsync();
+    expect(saveState).toHaveBeenCalledTimes(2);
+    expect(saveState).toHaveBeenLastCalledWith("personal-inventory", { value: 2 });
+  });
+
+  it("prefers a locally dirty snapshot over older server data", async () => {
+    const local = { value: "local-unsynced" };
+    const remote = { value: "remote-old" };
+    const replaceSnapshot = vi.fn();
+    const saveState = vi.fn().mockResolvedValue(undefined);
+    const adapter: StateAdapter<typeof local> = {
+      key: "life-system",
+      getSnapshot: () => local,
+      replaceSnapshot,
+      subscribe: () => () => {},
+      preferLocal: true,
+    };
+    const client = {
+      readState: vi.fn().mockResolvedValue(remote),
+      saveState,
+    } as unknown as RemoteStateClient;
+
+    const connected = await synchronizeStateAdapter(adapter, client);
+
+    expect(connected).toBe(true);
+    expect(replaceSnapshot).not.toHaveBeenCalled();
+    expect(saveState).toHaveBeenCalledWith("life-system", local);
+  });
+
+  it("tracks unsynced state keys in browser storage", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    const tracker = createDirtyStateTracker(storage);
+
+    tracker.mark("personal-inventory");
+    expect(tracker.has("personal-inventory")).toBe(true);
+    tracker.clear("personal-inventory");
+    expect(tracker.has("personal-inventory")).toBe(false);
+  });
+
+  it("adds an abort signal to API requests so startup cannot hang forever", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ error: "状态数据不存在" }, 404));
+    const client = createRemoteStateClient({ fetchImpl, requestTimeoutMs: 50 });
+
+    await client.readState("life-system");
+
+    expect(fetchImpl.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("replaces Base64 item images with uploaded media URLs", async () => {
